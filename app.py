@@ -5,12 +5,28 @@ class App:
     def __init__(self, stdscr):
         self.stdscr = stdscr
         self.menu = "intro"
+        self.valid_chars = [
+            ord(k) for k in "qwertyuiop[]\\asdf=-`1234567890ghjkl;'zxcvbnm,./"
+        ]
+
+        # loaded in from file in theory
+        self.previous_text = [
+            "q w e r t  y u i o p [ ] \\",
+            "a s d f g  h j k l ; '",
+            "z x c v b  n m , . / ",
+        ]
 
         # coloring to show changes
         curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_BLACK)
         curses.init_pair(2, curses.COLOR_GREEN, curses.COLOR_BLACK)
 
         self.run()
+
+    def add_text(self, x, y, s, col=0):
+        try:
+            self.stdscr.addstr(x, y, s, col)
+        except curses.error as e:
+            assert ("Your terminal is too small for curses to operate", e)
 
     def run(self):
         curses.curs_set(1)  # Show cursor
@@ -25,10 +41,30 @@ class App:
 
     def intro(self):
         self.stdscr.clear()
-        intro_text = (
-            'Welcome to FreyaBoardApp uwu. Type "help" for a list of commands\n'
+
+        commands = {
+            # "load <filename>": "loads a keyboard layout",
+            "(l)ist": "lists all keyboard layouts saved",
+            "(e)dit <layout>": "allows you to edit a keyboard layout",
+            "(m)ake <layout>": "<layout> defaults to qwerty if not specified, loads a template and makes a new layout",
+            "(g)enerate <layout>": "given a starting template attempts to generate a new layout",
+            "(a)nalyze <layout>": "analyzes the given layout",
+        }
+
+        # To print the help_text with aligned hyphens, you can use the following code:
+        max_length = max(len(key) for key in commands.keys())
+
+        help_text = "You can use the first letter of every command as shorthand. \n"
+        help_text += "-" * self.stdscr.getmaxyx()[1]  # + "\n"
+        help_text += "\n".join(
+            [
+                f"{key.ljust(max_length)} - {value}"
+                for key, value in sorted(commands.items(), key=lambda x: x[0])
+            ]
         )
-        self.stdscr.addstr(0, 0, intro_text)
+
+        intro_text = "Welcome to FreyaBoardApp uwu.\n\n" + help_text
+        self.add_text(0, 0, intro_text)
         self.stdscr.refresh()
 
         input_window = curses.newwin(1, curses.COLS - 1, curses.LINES - 1, 1)
@@ -41,10 +77,10 @@ class App:
             key = input_window.getch()
 
             if key == 10:  # Enter
-                if cmd == "help":
+                if cmd in ["help", "h"]:
                     self.menu = "help"
                     break
-                if cmd == "make":
+                if cmd in ("make", "m"):
                     self.menu = "edit"
                     break
             elif key == 127:  # Backspace
@@ -66,9 +102,9 @@ class App:
         commands = {
             # "load <filename>": "loads a keyboard layout",
             "(l)ist": "lists all keyboard layouts saved",
-            "(e)dit <filename>": "allows you to edit a keyboard layout",
-            "(m)ake <template>": "template defaults to qwerty if not specified, loads a template and makes a new layout",
-            "(g)enerate <template>": "given a starting template attempts to generate a new layout",
+            "(e)dit <layout>": "allows you to edit a keyboard layout",
+            "(m)ake <layout>": "template defaults to qwerty if not specified, loads a template and makes a new layout",
+            "(g)enerate <layout>": "given a starting template attempts to generate a new layout",
         }
 
         # To print the help_text with aligned hyphens, you can use the following code:
@@ -80,7 +116,7 @@ class App:
             [f"{key.ljust(max_length)} - {value}" for key, value in commands.items()]
         )
 
-        self.stdscr.addstr(0, 0, help_text)
+        self.add_text(0, 0, help_text)
         self.stdscr.refresh()
 
         while True:
@@ -93,16 +129,6 @@ class App:
 
     def edit_menu(self):
         self.stdscr.clear()
-        valid_chars = [
-            ord(k) for k in "qwertyuiop[]\\asdf=-`1234567890ghjkl;zxcvbnm,./"
-        ]
-
-        # loaded in from file in theory
-        previous_text = [
-            "q w e r t  y u i o p [ ] \\",
-            "a s d f g  h j k l ; '",
-            "z x c v b  n m , . / ",
-        ]
 
         text = [
             "q w e r t  y u i o p [ ] \\",
@@ -156,10 +182,10 @@ class App:
                 for x, char in enumerate(line):
                     col = curses.color_pair(2)
 
-                    if char == previous_text[y][x]:
+                    if char == self.previous_text[y][x]:
                         col = curses.color_pair(1)
 
-                    self.stdscr.addstr(y, x, char, col)
+                    self.add_text(y, x, char, col)
 
             self.stdscr.move(y_pos, x_pos)
             self.stdscr.refresh()
@@ -177,7 +203,7 @@ class App:
 
                 # Insert 'c' at the current position if it's an 'x'
                 current_line = list(text[y_pos])
-                current_line[x_pos] = previous_text[y_pos][x_pos]
+                current_line[x_pos] = self.previous_text[y_pos][x_pos]
                 text[y_pos] = "".join(current_line)
             elif key == curses.KEY_RIGHT or key == ord(" "):
                 shift_right()
@@ -196,13 +222,10 @@ class App:
                 shift_down()
             elif key == curses.KEY_UP:
                 shift_up()
-            elif key in valid_chars:
+            elif key in self.valid_chars:
                 if not (
                     y_pos == len(text) - 1 and x_pos == len(text[len(text) - 1]) - 1
                 ):
-                    # Insert 'c' at the current position if it's an 'x'
-                    previous_text
-
                     current_line = list(text[y_pos])
                     current_line[x_pos] = chr(key)
                     text[y_pos] = "".join(current_line)
