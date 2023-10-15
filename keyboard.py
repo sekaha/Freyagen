@@ -8,6 +8,7 @@
 # load layout from text file
 # caching of penalty scores for bigrams, only update required ones, keep old cache to revert back to
 from random import random, choice, sample
+from time import time
 
 
 def make_keyboard_from_file(file, staggered=False):
@@ -63,14 +64,25 @@ class Keyboard:
         groups = ["isrtneao"]
 
         # Columns adjacency handeling and probabilities, a key in a column is just as likely to be chosen as a key not in a column, hopefully producing some balance
-        self.cols = ["qaz", "edc", "wsx", "ik,", "ol.", "p;/"]  # "rfvtgb", "ujmyhn",
         self.keys = "".join(["".join([k for k in row]) for row in self.layout])
+        self.cols = [
+            "rl",
+            "hnb"
+            # "rfvtgb",
+            # "yhnujm",
+        ]  #  "rfvtgb", "ujmyhn",
         self.normal_keys = "".join(
             [k for k in self.keys if k not in "".join(self.cols)]
         )
-        self.key_count = sum([len(row) for row in self.layout])
+
+        self.col_id = {k: 0 for k in self.normal_keys}
+
+        for i, col in enumerate(self.cols):
+            for k in col:
+                self.col_id[k] = i + 1
+
         col_key_count = sum([len(c) for c in self.cols])
-        self.col_prob = col_key_count / (self.key_count)
+        self.col_prob = col_key_count / len(self.keys)
 
         # JUST DO new cache.get(,old_cache.get())
         self.cache = {}
@@ -78,10 +90,12 @@ class Keyboard:
 
     def __repr__(self):
         # for k in self.keys:
-        #    x, y = self.key_pos[k]
-        #    self.layout[y][x] = k
+        #     x, y = self.key_pos[k]
+        #     self.layout[y][x] = k
 
-        return "\n".join([" ".join(row) for row in self.layout])
+        return "\n".join(
+            [" ".join(row[:5]) + "  " + " ".join(row[5:]) for row in self.layout]
+        )
 
     def precompute_distances(self):
         # Iterate through possible vectors for a keyboard with touch typing and calculate distances
@@ -103,54 +117,40 @@ class Keyboard:
         # only instance this vector returns zero is if the two chars don't occur on the same finger
         return self.distances.get((x1 - x2, y1, y2), 0)
 
-    def swap(self):
-        if 1 == 1:  # len(self.cols) > 0 and random() < self.col_prob:
+    def mutate(self):
+        if len(self.cols) > 0 and random() < self.col_prob:
             col1 = choice(self.cols)
 
-            # get the keys of another random column
-            search = True
-
-            while search:
+            while True:
                 finger = choice(choice(list(self.finger.values())))
 
-                col2 = sum(
-                    [
-                        [self.layout[y][x] for x in range(finger[0], finger[-1] + 1)]
-                        for y in range(len(self.layout))
-                    ],
-                    [],
-                )
+                # get the keys of another random column
+                col2 = [
+                    self.layout[y][x]
+                    for x in range(finger[0], finger[-1] + 1)
+                    for y in range(len(self.layout))
+                ]
 
-                search = len(col1) > len(col2)
-
-            # from col2 choose the same amount of unique elements as col1 to swap
-            swaps = sample(col2, len(col1))
+                # from col2 choose the same amount of unique elements as col1 to swap
+                if len(col1) <= len(col2):
+                    swaps = sample(col2, len(col1))
+                    if all(self.col_id[swaps[0]] == self.col_id[k] for k in swaps):
+                        break
 
             for c1, c2 in zip(col1, swaps):
-                x1, y1, x2, y2 = *self.key_pos[c1], *self.key_pos[c2]
+                x1, y1, x2, y2 = self.key_pos[c1] + self.key_pos[c2]
 
-                self.layout[y1][x1] = c2
-                self.layout[y2][x2] = c1
-
-                self.key_pos[c1], self.key_pos[c2] = (
-                    self.key_pos[c2],
-                    self.key_pos[c1],
-                )
+                self.layout[y1][x1], self.layout[y2][x2] = c2, c1
+                self.key_pos[c1], self.key_pos[c2] = self.key_pos[c2], self.key_pos[c1]
         else:
             c1 = choice(self.normal_keys)
             c2 = choice(self.normal_keys)
 
             x1, y1, x2, y2 = *self.key_pos[c1], *self.key_pos[c2]
 
-            self.layout[y1][x1] = c2
-            self.layout[y2][x2] = c1
-
-            self.key_pos[c1], self.key_pos[c2] = (
-                self.key_pos[c2],
-                self.key_pos[c1],
-            )
-
-            print(f"swapped {c1} {c2}")
+            self.layout[y1][x1], self.layout[y2][x2] = c2, c1
+            self.key_pos[c1], self.key_pos[c2] = self.key_pos[c2], self.key_pos[c1]
+            # print(f"swapped {c1} {c2}")
 
     def accept(self):
         self.cache.update(self.cur_cache)
@@ -161,6 +161,10 @@ class Keyboard:
 
 k = make_keyboard_from_file("layouts/qwerty.txt", False)
 
-for i in range(30):
-    k.swap()
-    print(k)
+s = time()
+
+for i in range(1000000):
+    k.mutate()
+
+print(round((time() - s), 5), "s")
+print(k)
