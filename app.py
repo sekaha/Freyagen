@@ -36,8 +36,8 @@ class App:
                 self.intro()
             elif self.menu == "help":
                 self.help_menu()
-            elif self.menu == "edit":
-                self.edit_menu()
+            elif self.menu == "layout":
+                self.edit_layout()
 
     def intro(self):
         self.stdscr.clear()
@@ -81,7 +81,7 @@ class App:
                     self.menu = "help"
                     break
                 if cmd in ("make", "m"):
-                    self.menu = "edit"
+                    self.menu = "layout"
                     break
             elif key == 127:  # Backspace
                 if cmd:  # Check if the command is not empty
@@ -127,7 +127,7 @@ class App:
                 self.menu = "intro"
                 break
 
-    def edit_menu(self):
+    def edit_layout(self):
         self.stdscr.clear()
 
         text = [

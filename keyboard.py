@@ -25,8 +25,8 @@ class Keyboard:
         if layout == None:
             self.layout = [
                 ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
-                ["a", "s", "d", "f", "g", "h", "j", "k", "l", ";"],
-                ["z", "x", "c", "v", "b", "n", "m", ",", ".", "/"],
+                ["a", "s", "d", "f", "g", "h", "j", "k", "l", "-"],
+                ["z", "x", "c", "v", "b", "n", "m", ",", ".", "'"],
             ]
         else:
             self.layout = layout
@@ -58,9 +58,9 @@ class Keyboard:
         groups = ["isrtneao"]
 
         # Columns adjacency handeling and probabilities, a key in a column is just as likely to be chosen as a key not in a column, hopefully producing some balance
-        self.locked = set("q")
-        self.keys = "".join(["".join([k for k in row]) for row in self.layout])
-        self.cols = ["qaz", "rl", "hnb"]
+        self.locked = set("")
+        self.keys = sorted("".join(["".join([k for k in row]) for row in self.layout]))
+        self.cols = []  # "qaz", "rl", "hnb"]
         self.normal_keys = "".join(
             [k for k in self.keys if k not in "".join(self.cols)]
         )
@@ -79,10 +79,51 @@ class Keyboard:
         self.cur_cache = {}
         self.swaps = None  # used for swap history and unswapping
 
+        self.fitness = 0
+        self.cur_fitness = 0
+
     def __repr__(self):
         return "\n".join(
             [" ".join(row[:5]) + "  " + " ".join(row[5:]) for row in self.layout]
         )
+
+    def get_fitness(self, bigrams, skipgrams, skipgram_pen=0.5):
+        """
+        bigrams/skipgrams: 2d array of string "bigram" and int frequency
+        """
+        self.cur_fitness = self.fitness
+
+        # determine an initial fitness to be cached
+        if self.swaps == None:
+            print("accessed")
+            for gram in bigrams:
+                dist = self.get_distance(gram)
+                self.cache[gram] = dist
+
+                # add a penalty for the gram finger distance times the frequency of the gram
+                self.cur_fitness += dist * bigrams[gram]
+                self.cur_fitness += dist * skipgrams[gram] * skipgram_pen
+
+            self.fitness = self.cur_fitness
+        else:
+            # flatten swaps list for columns
+            new_chars = [c for subset in self.swaps for c in subset]
+            new_grams = set(
+                "".join(sorted(c + s)) for s in new_chars for c in self.keys if s != c
+            )
+
+            for gram in new_grams:
+                dist = self.get_distance(gram)
+                self.cur_cache[gram] = dist
+
+                # Only add on the difference between the old gram penalty and the new gram penalty and multiply by frequency
+                dist_diff = dist - self.cache[gram]
+                self.cur_fitness += dist_diff * bigrams[gram]
+                self.cur_fitness += dist_diff * skipgrams[gram] * skipgram_pen
+
+                # print(gram, dist)
+
+        return self.cur_fitness
 
     def precompute_distances(self):
         # Iterate through possible vectors for a keyboard with touch typing and calculate distances
@@ -102,7 +143,13 @@ class Keyboard:
         x2, y2 = self.key_pos[gram[1]]
 
         # only instance this vector returns zero is if the two chars don't occur on the same finger
-        return self.distances.get((x1 - x2, y1, y2), 0)
+        left_indexed = x1 in (3, 4) and x2 in (3, 4)
+        right_indexed = x1 in (5, 6) and x2 in (5, 6)
+
+        if x1 == x2 or left_indexed or right_indexed:
+            return self.distances.get((x1 - x2, y1, y2), 0)
+
+        return 0
 
     def mutate(self):
         # Column mutation
@@ -139,15 +186,15 @@ class Keyboard:
                     not in self.locked  # locked keys cannot and SHOULD not be swapped, FOOL
                 ]
 
-                if "a" in col1:
-                    print(col1, col2)
+                # if "a" in col1:
+                #     print(col1, col2)
 
                 # from col2 choose the same amount of unique elements as col1 to swap
                 if len(col1) <= len(col2):
                     swaps = sample(col2, len(col1))
 
-                    if "a" in col1:
-                        print(swaps)
+                    # if "a" in col1:
+                    #     print(swaps)
 
                     if all(self.col_id[swaps[0]] == self.col_id[k] for k in swaps):
                         break
@@ -169,27 +216,32 @@ class Keyboard:
 
     def swap(self, c1, c2):
         # change to xy i reckon...
-        x1, y1, x2, y2 = self.key_pos[c1] + self.key_pos[c2]
+        x1, y1, x2, y2 = *self.key_pos[c1], *self.key_pos[c2]
 
         self.layout[y1][x1], self.layout[y2][x2] = c2, c1
         self.key_pos[c1], self.key_pos[c2] = self.key_pos[c2], self.key_pos[c1]
 
     def accept(self):
         self.cache.update(self.cur_cache)
+        self.cur_cache = {}
+        self.fitness = self.cur_fitness
 
     def reject(self):
+        self.cur_cache = {}
+
         for c1, c2 in self.swaps:
             self.swap(c1, c2)
 
 
-k = Keyboard()  # make_keyboard_from_file("layouts/qwerty.txt", False)
-
-s = time()
-
-for i in range(30):
-    k.mutate()
-    print(k, "\n")
-    # k.reject()
-
-print(round((time() - s), 5), "s")
-print(k)
+# k = Keyboard()  # make_keyboard_from_file("layouts/qwerty.txt", False)
+#
+# s = time()
+#
+# for i in range(30):
+#     k.mutate()
+#     print(k, "\n")
+#     # k.reject()
+#
+# print(round((time() - s), 5), "s")
+# print(k)
+#
