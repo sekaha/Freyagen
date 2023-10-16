@@ -87,6 +87,7 @@ class Keyboard:
         # JUST DO new cache.get(,old_cache.get())
         self.cache = {}
         self.cur_cache = {}
+        self.swaps = None  # used for swap history and unswapping
 
     def __repr__(self):
         # for k in self.keys:
@@ -134,29 +135,39 @@ class Keyboard:
                 # from col2 choose the same amount of unique elements as col1 to swap
                 if len(col1) <= len(col2):
                     swaps = sample(col2, len(col1))
+                    # if all the elements of
                     if all(self.col_id[swaps[0]] == self.col_id[k] for k in swaps):
                         break
 
-            for c1, c2 in zip(col1, swaps):
-                x1, y1, x2, y2 = self.key_pos[c1] + self.key_pos[c2]
-
-                self.layout[y1][x1], self.layout[y2][x2] = c2, c1
-                self.key_pos[c1], self.key_pos[c2] = self.key_pos[c2], self.key_pos[c1]
+            self.swaps = list(zip(col1, swaps))
         else:
             c1 = choice(self.normal_keys)
             c2 = choice(self.normal_keys)
 
-            x1, y1, x2, y2 = *self.key_pos[c1], *self.key_pos[c2]
+            self.swaps = list(zip(c1, c2))
 
-            self.layout[y1][x1], self.layout[y2][x2] = c2, c1
-            self.key_pos[c1], self.key_pos[c2] = self.key_pos[c2], self.key_pos[c1]
-            # print(f"swapped {c1} {c2}")
+        for c1, c2 in self.swaps:
+            self.swap(c1, c2)
+
+        # print("mutate", list(self.swaps))
+        # print(self)
+
+    def swap(self, c1, c2):
+        # change to xy i reckon...
+        x1, y1, x2, y2 = *self.key_pos[c1], *self.key_pos[c2]
+
+        self.layout[y1][x1], self.layout[y2][x2] = c2, c1
+        self.key_pos[c1], self.key_pos[c2] = self.key_pos[c2], self.key_pos[c1]
 
     def accept(self):
         self.cache.update(self.cur_cache)
 
-    def unswap():
-        pass
+    def reject(self):
+        for c1, c2 in self.swaps:
+            self.swap(c1, c2)
+
+        # print("reject", list(self.swaps))
+        # print(self)
 
 
 k = make_keyboard_from_file("layouts/qwerty.txt", False)
@@ -165,6 +176,7 @@ s = time()
 
 for i in range(1000000):
     k.mutate()
+    k.reject()
 
 print(round((time() - s), 5), "s")
 print(k)
