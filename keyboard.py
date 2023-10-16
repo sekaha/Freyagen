@@ -31,12 +31,7 @@ class Keyboard:
         else:
             self.layout = layout
 
-        self.finger = {
-            "p": ((0,), (9,)),
-            "r": ((1,), (8,)),
-            "m": ((2,), (7,)),
-            "i": ((3, 4), (5, 6)),
-        }
+        self.finger = [((0,), (9,)), ((1,), (8,)), ((2,), (7,)), ((3, 4), (5, 6))]
 
         # precomputing key positions and distances for faster finding
         self.key_pos = {}
@@ -57,29 +52,24 @@ class Keyboard:
         self.precompute_distances()
 
         # implement as mask for locked
-        unlocked = None  # a set
         finger_locked = None  # make a set. this should be easy, just only swap with a valid finger index if it's in this list
 
         # Adjacency rules
         groups = ["isrtneao"]
 
         # Columns adjacency handeling and probabilities, a key in a column is just as likely to be chosen as a key not in a column, hopefully producing some balance
+        self.locked = set("q")
         self.keys = "".join(["".join([k for k in row]) for row in self.layout])
-        self.cols = [
-            "rl",
-            "hnb"
-            # "rfvtgb",
-            # "yhnujm",
-        ]  #  "rfvtgb", "ujmyhn",
+        self.cols = ["qaz", "rl", "hnb"]
         self.normal_keys = "".join(
             [k for k in self.keys if k not in "".join(self.cols)]
         )
 
-        self.col_id = {k: 0 for k in self.normal_keys}
+        self.col_id = {k: -1 for k in self.normal_keys}
 
         for i, col in enumerate(self.cols):
             for k in col:
-                self.col_id[k] = i + 1
+                self.col_id[k] = i
 
         col_key_count = sum([len(c) for c in self.cols])
         self.col_prob = col_key_count / len(self.keys)
@@ -90,10 +80,6 @@ class Keyboard:
         self.swaps = None  # used for swap history and unswapping
 
     def __repr__(self):
-        # for k in self.keys:
-        #     x, y = self.key_pos[k]
-        #     self.layout[y][x] = k
-
         return "\n".join(
             [" ".join(row[:5]) + "  " + " ".join(row[5:]) for row in self.layout]
         )
@@ -119,42 +105,71 @@ class Keyboard:
         return self.distances.get((x1 - x2, y1, y2), 0)
 
     def mutate(self):
+        # Column mutation
         if len(self.cols) > 0 and random() < self.col_prob:
-            col1 = choice(self.cols)
+            col1 = choice((self.cols))
 
             while True:
-                finger = choice(choice(list(self.finger.values())))
+                locked = False
+
+                for k in col1:
+                    if k in self.locked:
+                        col1 = col1.replace(k, "")
+                        x, y = self.key_pos[k]
+
+                        if x in (3, 4):
+                            finger = (3, 4)
+                        elif x in (5, 6):
+                            finger = (5, 6)
+                        else:
+                            finger = (x,)
+
+                        locked = True
+                        break
+
+                if not locked:
+                    finger = choice(choice(self.finger))
 
                 # get the keys of another random column
                 col2 = [
                     self.layout[y][x]
                     for x in range(finger[0], finger[-1] + 1)
                     for y in range(len(self.layout))
+                    if self.layout[y][x]
+                    not in self.locked  # locked keys cannot and SHOULD not be swapped, FOOL
                 ]
+
+                if "a" in col1:
+                    print(col1, col2)
 
                 # from col2 choose the same amount of unique elements as col1 to swap
                 if len(col1) <= len(col2):
                     swaps = sample(col2, len(col1))
-                    # if all the elements of
+
+                    if "a" in col1:
+                        print(swaps)
+
                     if all(self.col_id[swaps[0]] == self.col_id[k] for k in swaps):
                         break
 
             self.swaps = list(zip(col1, swaps))
+        # Regular single key swap mutation
         else:
-            c1 = choice(self.normal_keys)
-            c2 = choice(self.normal_keys)
+            while True:
+                c1 = choice(self.normal_keys)
+                c2 = choice(self.normal_keys)
+
+                if not (c1 in self.locked or c2 in self.locked):
+                    break
 
             self.swaps = list(zip(c1, c2))
 
         for c1, c2 in self.swaps:
             self.swap(c1, c2)
 
-        # print("mutate", list(self.swaps))
-        # print(self)
-
     def swap(self, c1, c2):
         # change to xy i reckon...
-        x1, y1, x2, y2 = *self.key_pos[c1], *self.key_pos[c2]
+        x1, y1, x2, y2 = self.key_pos[c1] + self.key_pos[c2]
 
         self.layout[y1][x1], self.layout[y2][x2] = c2, c1
         self.key_pos[c1], self.key_pos[c2] = self.key_pos[c2], self.key_pos[c1]
@@ -166,17 +181,15 @@ class Keyboard:
         for c1, c2 in self.swaps:
             self.swap(c1, c2)
 
-        # print("reject", list(self.swaps))
-        # print(self)
 
-
-k = make_keyboard_from_file("layouts/qwerty.txt", False)
+k = Keyboard()  # make_keyboard_from_file("layouts/qwerty.txt", False)
 
 s = time()
 
-for i in range(1000000):
+for i in range(30):
     k.mutate()
-    k.reject()
+    print(k, "\n")
+    # k.reject()
 
 print(round((time() - s), 5), "s")
 print(k)
