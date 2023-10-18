@@ -24,12 +24,12 @@ class Keyboard:
         # Default to qwerty if layout not specified
         if layout == None:
             self.layout = [
-                ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
+                ["q", "w", "e", "r", "t", "b", "u", "i", "o", "p"],
                 ["a", "s", "d", "f", "g", "h", "j", "k", "l", "-"],
-                ["z", "x", "c", "v", "b", "n", "m", ",", ".", "'"],
+                ["z", "x", "c", "v", "y", "n", "m", ",", ".", "'"],
             ]
         else:
-            self.layout = layout
+            self.layout = [list(row) for row in layout]
 
         self.finger = [((0,), (9,)), ((1,), (8,)), ((2,), (7,)), ((3, 4), (5, 6))]
 
@@ -54,12 +54,16 @@ class Keyboard:
         # implement as mask for locked
         finger_locked = None  # make a set. this should be easy, just only swap with a valid finger index if it's in this list
 
+        # Columns adjacency handeling and probabilities, a key in a column is just as likely to be chosen as a key not in a column, hopefully producing some balance
+        self.locked = set()
+        self.keys = sorted("".join(["".join([k for k in row]) for row in self.layout]))
+
         # Adjacency rules
         groups = ["isrtneao"]
+        self.group_id = {
+            c: i if c in g else -1 for i, g in enumerate(groups) for c in self.keys
+        }
 
-        # Columns adjacency handeling and probabilities, a key in a column is just as likely to be chosen as a key not in a column, hopefully producing some balance
-        self.locked = set("")
-        self.keys = sorted("".join(["".join([k for k in row]) for row in self.layout]))
         self.cols = []  # "qaz", "rl", "hnb"]
         self.normal_keys = "".join(
             [k for k in self.keys if k not in "".join(self.cols)]
@@ -95,7 +99,6 @@ class Keyboard:
 
         # determine an initial fitness to be cached
         if self.swaps == None:
-            print("accessed")
             for gram in bigrams:
                 dist = self.get_distance(gram)
                 self.cache[gram] = dist
@@ -157,25 +160,7 @@ class Keyboard:
             col1 = choice((self.cols))
 
             while True:
-                locked = False
-
-                for k in col1:
-                    if k in self.locked:
-                        col1 = col1.replace(k, "")
-                        x, y = self.key_pos[k]
-
-                        if x in (3, 4):
-                            finger = (3, 4)
-                        elif x in (5, 6):
-                            finger = (5, 6)
-                        else:
-                            finger = (x,)
-
-                        locked = True
-                        break
-
-                if not locked:
-                    finger = choice(choice(self.finger))
+                finger = choice(choice(self.finger))
 
                 # get the keys of another random column
                 col2 = [
@@ -183,18 +168,11 @@ class Keyboard:
                     for x in range(finger[0], finger[-1] + 1)
                     for y in range(len(self.layout))
                     if self.layout[y][x]
-                    not in self.locked  # locked keys cannot and SHOULD not be swapped, FOOL
                 ]
-
-                # if "a" in col1:
-                #     print(col1, col2)
 
                 # from col2 choose the same amount of unique elements as col1 to swap
                 if len(col1) <= len(col2):
                     swaps = sample(col2, len(col1))
-
-                    # if "a" in col1:
-                    #     print(swaps)
 
                     if all(self.col_id[swaps[0]] == self.col_id[k] for k in swaps):
                         break
@@ -206,7 +184,10 @@ class Keyboard:
                 c1 = choice(self.normal_keys)
                 c2 = choice(self.normal_keys)
 
-                if not (c1 in self.locked or c2 in self.locked):
+                if (
+                    not (c1 in self.locked or c2 in self.locked)
+                    and self.group_id[c1] == self.group_id[c2]
+                ):
                     break
 
             self.swaps = list(zip(c1, c2))
