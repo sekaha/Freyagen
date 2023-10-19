@@ -48,6 +48,7 @@ class Keyboard:
 
         # an oxey constant cuz i love oxey, bestie <3
         self.dist_bias = 0.65
+        self.lateral_penalty = 0.26
         self.distances = {}
         self.precompute_distances()
 
@@ -59,7 +60,7 @@ class Keyboard:
         self.keys = sorted("".join(["".join([k for k in row]) for row in self.layout]))
 
         # Adjacency rules
-        groups = ["isrtneao"]
+        groups = [""]  # ["isrtneao"]
         self.group_id = {
             c: i if c in g else -1 for i, g in enumerate(groups) for c in self.keys
         }
@@ -85,6 +86,8 @@ class Keyboard:
 
         self.fitness = 0
         self.cur_fitness = 0
+        self.sfb, self.sfs = 0, 0
+        self.bg_count, self.sg_count = 0, 0
 
     def __repr__(self):
         return "\n".join(
@@ -95,10 +98,12 @@ class Keyboard:
         """
         bigrams/skipgrams: 2d array of string "bigram" and int frequency
         """
+        # print(bigrams, skipgrams)
         self.cur_fitness = self.fitness
 
         # determine an initial fitness to be cached
         if self.swaps == None:
+            self.sfb, self.sfs, self.bg_count, self.sg_count = 0, 0, 0, 0
             for gram in bigrams:
                 dist = self.get_distance(gram)
                 self.cache[gram] = dist
@@ -123,8 +128,6 @@ class Keyboard:
                 dist_diff = dist - self.cache[gram]
                 self.cur_fitness += dist_diff * bigrams[gram]
                 self.cur_fitness += dist_diff * skipgrams[gram] * skipgram_pen
-
-                # print(gram, dist)
 
         return self.cur_fitness
 

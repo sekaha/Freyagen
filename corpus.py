@@ -1,7 +1,7 @@
 from collections import Counter
 
 
-def get_grams(file):
+def get_grams(file, valid):
     """
     opens tsv file and converts it into Counter dict with gram and freq as columns
     """
@@ -9,10 +9,9 @@ def get_grams(file):
 
     with open(file) as f:
         for l in f:
-            chrs, freq = l.strip().split("\t")
-            grams[chrs] = int(freq)
+            chars, freq = l.strip().split("\t")
+
+            if all(c in valid for c in chars):
+                grams[chars] = int(freq)
 
     return grams
-
-
-bigrams = get_grams("res/bigrams.txt")

@@ -3,9 +3,12 @@ from corpus import get_grams
 
 from time import time
 
+# constrain > generate > swap columns > brute force
+# probably sfb, sfs, scissors, lsbs and bad redirects get you 90% of the way there at least as far as current scoring algorithms/metrics go
 
-bigrams = get_grams("res/bigrams.txt")
-skipgrams = get_grams("res/bigrams.txt")
+valid = "qwjldyu/fp" + "astoghenri" + "zxcvbkm,.;"
+bigrams = get_grams("res/bigrams.txt", valid)
+skipgrams = get_grams("res/1-skip.txt", valid)
 
 # qwerty = Keyboard(staggered=True)
 recurva = Keyboard(["frdpvqjuoy", "sntcb.heai", "zxkgwml-',"])
@@ -14,24 +17,24 @@ recurva = Keyboard(["frdpvqjuoy", "sntcb.heai", "zxkgwml-',"])
 # print(recurva.get_fitness(bigrams, skipgrams))
 qwerty = Keyboard(staggered=True)
 
-# needed for init
-qwerty.get_fitness(bigrams, skipgrams)
-
 s = time()
 global_fit = float("inf")
 t = 0
+
 for _ in range(100000):
-    qwerty = Keyboard(["qwjldyu-fp", "astoghenri", "zxcvbkm,.'"], staggered=True)
-    qwerty.get_fitness(bigrams, skipgrams)
     fitness = float("inf")
+    qwerty = Keyboard(["yclmkzfu,;", "isrtgpneao", "qvwdjbh/.x"], staggered=False)
+
+    for j in range(30):
+        qwerty.mutate()
+    qwerty.swaps = None
+    qwerty.get_fitness(bigrams, skipgrams, 1.0)
 
     for i in range(5000):
         t += 1
         qwerty.mutate()
 
-        # print(qwerty)
-
-        new_fit = qwerty.get_fitness(bigrams, skipgrams)
+        new_fit = qwerty.get_fitness(bigrams, skipgrams, 1.0)
 
         if new_fit < fitness:
             fitness = new_fit
@@ -42,7 +45,13 @@ for _ in range(100000):
 
         if new_fit < global_fit:
             print(
-                f"Staggered thread{_}, epoch-{i} in {round(time() - s, 3)}s, ", new_fit
+                "staggered " + f"thread{_}, epoch-{i} in {round(time() - s, 3)}s, ",
+                new_fit,
+            )
+            qwerty.swaps = None
+            qwerty.get_fitness(bigrams, skipgrams, 1.0)
+            print(
+                f"SFB {(100*qwerty.sfb / qwerty.bg_count) : 0.2f}, SFS {(100*qwerty.sfs / qwerty.sg_count) : 0.2f}"
             )
             print(qwerty)
             global_fit = new_fit
