@@ -25,8 +25,8 @@ class Keyboard:
         if layout == None:
             self.layout = [
                 ["q", "w", "e", "r", "t", "b", "u", "i", "o", "p"],
-                ["a", "s", "d", "f", "g", "h", "j", "k", "l", "-"],
-                ["z", "x", "c", "v", "y", "n", "m", ",", ".", "'"],
+                ["a", "s", "d", "f", "g", "h", "j", "k", "l", ";"],
+                ["z", "x", "c", "v", "y", "n", "m", ",", ".", "/"],
             ]
         else:
             self.layout = [list(row) for row in layout]
@@ -67,7 +67,11 @@ class Keyboard:
 
         self.cols = []  # "qaz", "rl", "hnb"]
         self.normal_keys = "".join(
-            [k for k in self.keys if k not in "".join(self.cols)]
+            [
+                k
+                for k in self.keys
+                if k not in "".join(self.cols) and k not in self.locked
+            ]
         )
 
         self.col_id = {k: -1 for k in self.normal_keys}
@@ -94,7 +98,8 @@ class Keyboard:
             [" ".join(row[:5]) + "  " + " ".join(row[5:]) for row in self.layout]
         )
 
-    def get_fitness(self, bigrams, skipgrams, skipgram_pen=0.5):
+    # this needs to be fixed, because it's not technically right
+    def get_fitness(self, bigrams, skipgrams, skipgram_pen=0.1):
         """
         bigrams/skipgrams: 2d array of string "bigram" and int frequency
         """
@@ -155,6 +160,8 @@ class Keyboard:
         if x1 == x2 or left_indexed or right_indexed:
             return self.distances.get((x1 - x2, y1, y2), 0)
 
+        # here I could check if the distance is greater than 4 (euclideans 2)... and apply it with scissor penalty
+
         return 0
 
     def mutate(self):
@@ -187,10 +194,7 @@ class Keyboard:
                 c1 = choice(self.normal_keys)
                 c2 = choice(self.normal_keys)
 
-                if (
-                    not (c1 in self.locked or c2 in self.locked)
-                    and self.group_id[c1] == self.group_id[c2]
-                ):
+                if self.group_id[c1] == self.group_id[c2]:
                     break
 
             self.swaps = list(zip(c1, c2))
