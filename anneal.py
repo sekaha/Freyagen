@@ -1,19 +1,22 @@
 from corpus import get_grams
 from keyboard import Keyboard
 from math import exp, log
-from random import random, uniform, sample
+from random import random, uniform, sample, randint
+
+best_fitness = float("inf")
+best = None
+swaps_n = 0
 
 
 class Annealer:
-    def __init__(self, keyboard, bigrams, skipgrams):
+    def __init__(self, keyboard, bigrams, skipgrams, trigrams):
         # key board variables
         self.kb = keyboard
-        self.best_fitness = float("inf")
-        self.best = None
 
         # corpus info used in fitness function
         self.bigrams = bigrams
         self.skipgrams = skipgrams
+        self.trigrams = trigrams
 
         # permutations of the keyboard used for later metrics
         self.key_count = len(self.kb.normal_keys)
@@ -35,7 +38,7 @@ class Annealer:
     # Ben-Ameur, Walid. "Computing the initial temperature of simulated annealing." Computational Optimization and Applications 29, no. 3 (2004): 369-385
     # t0 = STD Deviation of costs
     def get_initial_temp(self, k=0):
-        self.kb.get_fitness(self.bigrams, self.skipgrams)
+        self.kb.get_fitness(self.bigrams, self.skipgrams, self.trigrams)
         self.kb.accept()
         std_dev = 0
         combos = self.combo_list
@@ -50,12 +53,11 @@ class Annealer:
             for c1, c2 in self.kb.swaps:
                 self.kb.swap(c1, c2)
 
-            self.kb.get_fitness(self.bigrams, self.skipgrams)
+            self.kb.get_fitness(self.bigrams, self.skipgrams, self.trigrams)
             # work towards calculating standard deviation
             std_dev += abs(self.kb.cur_fitness - self.kb.fitness) / len(combos)
 
             self.kb.reject()
-            # self.kb.accept()
 
         # the initial temperature that should lead to a p0% chance of making a swap
         return -std_dev / log(self.p0)
@@ -74,6 +76,7 @@ class Annealer:
         self.t *= self.alpha
 
     def run(self):
+        global best_fitness, best, swaps_n
         k = 0
         stays = 0
 
@@ -84,7 +87,8 @@ class Annealer:
             # check a markov chain of the same length as number of keys
             for _ in range(self.key_count):
                 self.kb.mutate()
-                self.kb.get_fitness(self.bigrams, self.skipgrams)
+                swaps_n += 1
+                self.kb.get_fitness(self.bigrams, self.skipgrams, self.trigrams)
 
                 # metropolis check
                 de = self.kb.cur_fitness - self.kb.fitness
@@ -101,15 +105,50 @@ class Annealer:
                     stays += 1
                     self.kb.reject()
 
+                if self.kb.fitness < best_fitness:
+                    best = [[c for c in row] for row in self.kb.layout]
+                    print(
+                        "new best",
+                        round((self.kb.fitness / self.t0) * 100, 2),
+                        "%",
+                        self.kb.fitness,
+                    )
+                    print("scissor score:", self.kb.scissor_score)
+                    print(self.kb)
+                    best_fitness = self.kb.fitness
+
             # cool down
             self.cool_down(k)
 
 
-valid = "yclmkzfu,;" + "isrtgpneao" + "qvwdjbh/.x"
+# r1 = "fndpvqjuo."
+# r2 = "srtcbyheai"
+# r3 = "xzkgwml;',"
 
+# isrtneao
+
+r1 = "ywlfjzudkx"
+r2 = "asirghtoen"
+r3 = "qpcvb-m,.'"
+
+# r1 = "qwertyuiop"
+# r2 = "asdfghjkl;"
+# r3 = "zxcvbnm,./"
+
+# r1 = "kwerqyuiop"
+# r2 = "tsdfghzal-"
+# r3 = "jxcvbnm,.'"
+
+valid = r1 + r2 + r3
 bigrams = get_grams("res/bigrams.txt", valid)
 skipgrams = get_grams("res/1-skip.txt", valid)
-layout = Keyboard(staggered=True)
+trigrams = get_grams("res/trigrams.txt", valid, 0.98772)
+layout = Keyboard([list(r1), list(r2), list(r3)], staggered=True)
 
-A = Annealer(layout, bigrams, skipgrams)
-A.run()
+i = 0
+
+while True:
+    i += 1
+    A = Annealer(layout, bigrams, skipgrams, trigrams)
+    print(i, "swaps", swaps_n)
+    A.run()

@@ -1,97 +1,38 @@
 from corpus import get_grams
+import re
+from random import randint
 
-layout = ["os/pvzcde.", "anrmkjtlui", "qx,bfgwh;y"]
+print(list(range(0, 3, 2)))
+print(1 / 0)
 
-layout = ["puhgdzv,y.", "nertmcsoia", "b/lkqfwxj;"]
-
-# . y u g d  z v h p ,
-# a i e t m  c s r n o
-# ; j / k q  f w l b x
-
-# y p h g d  z v u . ,
-# i n r t m  c s e a o
-# j b l k q  f w / ; x
-
-# . u o f h  b c n l y
-# i e a d m  g p r t s
-# , / ; k q  w z x j v
+layout = """p x y w f  q k h , u
+n o i s c  m t r a e
+b ' j v z  d g l . -"""
 
 chars = get_grams("res/characters.txt", "".join(layout))
 
-cols = [
-    sum([chars[layout[y][x]] for y in range(len(layout))])
-    for x in range(len(layout[0]))
-]
+layout_cleaned = [list(row) for row in layout.replace(" ", "").split("\n")]
+cols = [c for c in zip(*layout_cleaned)]
+left_i = cols[3:5]
+right_i = cols[6:8]
+cols = cols[0:3] + cols[7:10]
 
-sorted_col = sorted(
-    [([layout[y][x] for y in range(len(layout))]) for x in range(len(layout[0]))],
-    key=lambda x: sum(chars[c] for c in x),
-)
+cols.sort(key=lambda x: sum([chars[c] for c in x]))
 
-print(sorted_col)
+for x, (a, b) in enumerate(zip(cols[::2], cols[1::2])):
+    if randint(0, 1):
+        a, b = b, a
 
-total = sum(cols)
+    for y in range(3):
+        layout_cleaned[y][x] = a[y]
+        layout_cleaned[y][-(x + 1)] = b[y]
 
-
-print(total)
-
-import random
-import math
+print("\n".join((["".join(row) for row in layout_cleaned])))
 
 
-def generate_initial_solution():
-    # Generate an initial solution within the parameter ranges
-    return [...]
+# chars = get_grams("res/characters.txt", "".join(layout))
 
+# sorted_cols = [col for col in zip(*(layout.replace(" ", "").split("\n")[3:4] + layout.replace(" ", "").split("\n")[6:7]))]
+# sorted_cols.sort(key=lambda x: chars[x[0]] + chars[x[2]])
 
-def calculate_energy(solution):
-    # Calculate the energy (fitness) of a given solution
-    return ...
-
-
-def generate_yi(Ti):
-    ui = random.uniform(0, 1)
-    sgn = 1 if ui < 0.5 else -1
-    return sgn * Ti * ((1 + 1 / Ti) * abs(2 * ui - 1) - 1)
-
-
-def adaptive_simulated_annealing(max_iterations, T0, D, mi, ni):
-    current_solution = generate_initial_solution()
-    current_energy = calculate_energy(current_solution)
-    best_solution = current_solution
-    best_energy = current_energy
-
-    for k in range(max_iterations):
-        T = [T0 * math.exp(-mi * (k / max_iterations) ** (1 / D)) for mi in mi]
-
-        # Generate D-dimensional random yi values
-        yi = [generate_yi(Ti) for Ti in T]
-
-        # Update the solution parameters based on yi
-        new_solution = [current_solution[i] + yi[i] for i in range(D)]
-
-        # Ensure that new_solution is within parameter constraints
-
-        new_energy = calculate_energy(new_solution)
-
-        if new_energy < current_energy:
-            current_solution = new_solution
-            current_energy = new_energy
-
-        if new_energy < best_energy:
-            best_solution = new_solution
-            best_energy = new_energy
-
-    return best_solution, best_energy
-
-
-# Example usage
-max_iterations = 1000
-T0 = [1.0, 2.0, 3.0]  # Initial temperature for each dimension
-D = 3  # Number of dimensions
-mi = 0.1  # mi parameter
-ni = 1.0  # ni parameter
-
-best_solution, best_energy = adaptive_simulated_annealing(max_iterations, T0, D, mi, ni)
-print("Best Solution:", best_solution)
-print("Best Energy:", best_energy)
+# print(sorted_cols)

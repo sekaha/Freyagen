@@ -7,16 +7,11 @@
 # save layout to text file
 # load layout from text file
 # caching of penalty scores for bigrams, only update required ones, keep old cache to revert back to
-from random import random, choice, sample
+from random import random, choice, sample, randint
+from math import log2
 from time import time
-
-
-def make_keyboard_from_file(file, staggered=False):
-    try:
-        with open(file, "r") as f:
-            return Keyboard([l.split() for l in f], staggered=staggered)
-    except FileNotFoundError as e:
-        print("Cannot load file, skill issue, error:", e)
+from itertools import permutations
+from corpus import get_grams
 
 
 class Keyboard:
@@ -24,20 +19,27 @@ class Keyboard:
         # Default to qwerty if layout not specified
         if layout == None:
             self.layout = [
-                ["q", "w", "e", "r", "t", "b", "u", "i", "o", "p"],
-                ["a", "s", "d", "f", "g", "h", "j", "k", "l", ";"],
-                ["z", "x", "c", "v", "y", "n", "m", ",", ".", "/"],
+                ["q", "a", "z"],
+                ["w", "s", "x"],
+                ["e", "d", "c"],
+                ["r", "f", "v"],
+                ["t", "g", "b"],
+                ["y", "h", "n"],
+                ["u", "j", "m"],
+                ["i", "k", ","],
+                ["o", "l", "."],
+                ["p", ";", "/"],
             ]
         else:
-            self.layout = [list(row) for row in layout]
+            self.layout = [list(col) for col in zip(*layout)]
 
         self.finger = [((0,), (9,)), ((1,), (8,)), ((2,), (7,)), ((3, 4), (5, 6))]
 
         # precomputing key positions and distances for faster finding
         self.key_pos = {}
 
-        for y, row in enumerate(self.layout):
-            for x, key in enumerate(row):
+        for x, col in enumerate(self.layout):
+            for y, key in enumerate(col):
                 self.key_pos[key] = (x, y)
 
         # O(1) dict retrieval of precomputed distances for our keyboard layout based on dx dy
@@ -47,8 +49,7 @@ class Keyboard:
             self.row_offsets = [0, 0, 0]
 
         # an oxey constant cuz i love oxey, bestie <3
-        self.dist_bias = 0.65
-        self.lateral_penalty = 0.26
+        self.dist_bias = 0.5
         self.distances = {}
         self.precompute_distances()
 
@@ -56,16 +57,17 @@ class Keyboard:
         finger_locked = None  # make a set. this should be easy, just only swap with a valid finger index if it's in this list
 
         # Columns adjacency handeling and probabilities, a key in a column is just as likely to be chosen as a key not in a column, hopefully producing some balance
-        self.locked = set()
+        self.locked = set("yx'q")  # set()  #
         self.keys = sorted("".join(["".join([k for k in row]) for row in self.layout]))
 
         # Adjacency rules
-        groups = [""]  # ["isrtneao"]
+        groups = ["isrtneao"]  # [""]  #
         self.group_id = {
             c: i if c in g else -1 for i, g in enumerate(groups) for c in self.keys
         }
 
-        self.cols = []  # "qaz", "rl", "hnb"]
+        self.cols = [""]  # "qaz", "rl", "hnb"]
+
         self.normal_keys = "".join(
             [
                 k
@@ -84,62 +86,140 @@ class Keyboard:
         self.col_prob = col_key_count / len(self.keys)
 
         # JUST DO new cache.get(,old_cache.get())
-        self.cache = {}
-        self.cur_cache = {}
+        self.sf_cache = {}
+        self.cur_sf_cache = {}
         self.swaps = None  # used for swap history and unswapping
+        self.scissor_pen = 0.005
 
         self.fitness = 0
         self.cur_fitness = 0
+        self.red_score = 0
+        self.cur_red_score = 0
+        self.bad_pen = 0.03 * 0.33333
+        self.red_pen = 0.02 * 0.333333
+        self.scissor_score = 0
+        self.cur_scissor_score = 0
+        self.skipgram_pen = 0.21
         self.sfb, self.sfs = 0, 0
         self.bg_count, self.sg_count = 0, 0
+        self.characters = get_grams("res/characters.txt", self.keys)
 
     def __repr__(self):
         return "\n".join(
-            [" ".join(row[:5]) + "  " + " ".join(row[5:]) for row in self.layout]
+            [" ".join(row[:5]) + "  " + " ".join(row[5:]) for row in zip(*self.layout)]
         )
 
-    # this needs to be fixed, because it's not technically right
-    def get_fitness(self, bigrams, skipgrams, skipgram_pen=0.1):
+    def get_sfs_sfb_pen(self, bigrams, skipgrams):
         """
         bigrams/skipgrams: 2d array of string "bigram" and int frequency
         """
-        # print(bigrams, skipgrams)
-        self.cur_fitness = self.fitness
-
         # determine an initial fitness to be cached
         if self.swaps == None:
             self.sfb, self.sfs, self.bg_count, self.sg_count = 0, 0, 0, 0
             for gram in bigrams:
                 dist = self.get_distance(gram)
-                self.cache[gram] = dist
+                self.sf_cache[gram] = dist
 
                 # add a penalty for the gram finger distance times the frequency of the gram
                 self.cur_fitness += dist * bigrams[gram]
-                self.cur_fitness += dist * skipgrams[gram] * skipgram_pen
-
-            self.fitness = self.cur_fitness
+                self.cur_fitness += dist * skipgrams[gram] * self.skipgram_pen
         else:
             # flatten swaps list for columns
-            new_chars = [c for subset in self.swaps for c in subset]
+            new_chars = [c for s in self.swaps for c in s]
             new_grams = set(
                 "".join(sorted(c + s)) for s in new_chars for c in self.keys if s != c
             )
 
             for gram in new_grams:
                 dist = self.get_distance(gram)
-                self.cur_cache[gram] = dist
+                self.cur_sf_cache[gram] = dist
 
                 # Only add on the difference between the old gram penalty and the new gram penalty and multiply by frequency
-                dist_diff = dist - self.cache[gram]
+                dist_diff = dist - self.sf_cache[gram]
                 self.cur_fitness += dist_diff * bigrams[gram]
-                self.cur_fitness += dist_diff * skipgrams[gram] * skipgram_pen
+                self.cur_fitness += dist_diff * skipgrams[gram] * self.skipgram_pen
 
-        return self.cur_fitness
+    def get_scissor_pen(self, bigrams):
+        self.cur_fitness -= self.scissor_score
+
+        # Determine which fingers are scissors left to right and then we can get their distance penalties
+        pairs = [
+            ((0, 0), (1, 2)),
+            ((1, 0), (2, 2)),
+            ((2, 2), (3, 0)),
+            ((0, 2), (1, 0)),
+            ((1, 2), (2, 0)),
+            ((1, 2), (2, 0)),
+        ]
+
+        for (x1, y1), (x2, y2) in pairs:
+            # left finger
+            l = "".join(sorted(self.layout[x1][y1] + self.layout[x2][y2]))
+            self.cur_scissor_score += bigrams[l] * self.scissor_pen
+
+            # right finger
+            r = "".join(sorted(self.layout[-(x1 + 1)][y1] + self.layout[-(x2 + 1)][y2]))
+            self.cur_scissor_score += bigrams[r] * self.scissor_pen
+
+        self.cur_fitness += self.cur_scissor_score
+
+    def is_redir(self, trigram):
+        x1, x2, x3 = [self.key_pos[c][0] for c in trigram]
+
+        if not any(3 <= x <= 6 for x in (x1, x2, x3)):
+            pen = self.bad_pen
+        else:
+            pen = self.red_pen
+
+        if (0 <= x1 <= 4 and 0 <= x2 <= 4 and 0 <= x3 <= 4) or (
+            x1 > 4 and x2 > 4 and x3 > 4
+        ):
+            return pen * ((x1 < x2 and x3 < x2) or (x1 > x2 and x2 > x3))
+
+        return 0
+
+    def get_redir_pen(self, trigrams):
+        self.cur_fitness -= self.red_score
+
+        for (trigram, frequency) in trigrams:
+            self.cur_red_score += self.is_redir(trigram) * frequency
+
+        self.cur_fitness += self.cur_red_score
+
+    # this needs to be fixed, because it's not technically right
+    def get_fitness(self, bigrams, skipgrams, trigrams):
+        # create a new fitness score which can be reverted to save work time
+        self.cur_fitness = self.fitness
+        self.get_sfs_sfb_pen(bigrams, skipgrams)
+        self.sort_cols()
+        # self.get_scissor_pen(bigrams)
+        self.get_redir_pen(trigrams)
+
+        if self.swaps == None:
+            self.fitness = self.cur_fitness
+
+    def sort_cols(self):
+        # Sort columns by frequency
+        cols = self.layout[0:3] + self.layout[7:10]
+
+        # make a copy so that it doesn't reference the original
+        cols = [col[:] for col in cols]
+        # sort columns by the frequency of their top and bottom
+        # cols.sort(key=lambda x: self.characters[0] + self.characters[2])
+        cols.sort(key=lambda x: sum([self.characters[c] for c in x]))
+
+        for x, (a, b) in enumerate(zip(cols[::2], cols[1::2])):
+            if randint(0, 1):
+                a, b = b, a
+
+            for y in range(3):
+                self.layout[x][y], self.layout[-(x + 1)][y] = a[y], b[y]
+                self.key_pos[a[y]], self.key_pos[b[y]] = (x, y), (10 - (x + 1), y)
 
     def precompute_distances(self):
         # Iterate through possible vectors for a keyboard with touch typing and calculate distances
-        for y1 in range(len(self.layout)):
-            for y2 in range(len(self.layout)):
+        for y1 in range(len(self.layout[0])):
+            for y2 in range(len(self.layout[0])):
                 # possible difference between x1 and x2, really only relevant for index fingers
                 for x in range(-1, 2):
                     # for a dx of x1-x2
@@ -174,10 +254,10 @@ class Keyboard:
 
                 # get the keys of another random column
                 col2 = [
-                    self.layout[y][x]
+                    self.layout[x][y]
                     for x in range(finger[0], finger[-1] + 1)
-                    for y in range(len(self.layout))
-                    if self.layout[y][x]
+                    for y in range(len(self.layout[0]))
+                    if self.layout[x][y]
                 ]
 
                 # from col2 choose the same amount of unique elements as col1 to swap
@@ -206,30 +286,30 @@ class Keyboard:
         # change to xy i reckon...
         x1, y1, x2, y2 = *self.key_pos[c1], *self.key_pos[c2]
 
-        self.layout[y1][x1], self.layout[y2][x2] = c2, c1
+        self.layout[x1][y1], self.layout[x2][y2] = c2, c1
         self.key_pos[c1], self.key_pos[c2] = self.key_pos[c2], self.key_pos[c1]
 
     def accept(self):
-        self.cache.update(self.cur_cache)
-        self.cur_cache = {}
+        self.scissor_score = self.cur_scissor_score
+        self.sf_cache.update(self.cur_sf_cache)
+        self.cur_sf_cache = {}
+        self.cur_scissor_scores = 0
         self.fitness = self.cur_fitness
+        self.red_score = self.cur_red_score
+        self.cur_red_score = 0
 
     def reject(self):
-        self.cur_cache = {}
+        self.cur_sf_cache = {}
+        self.cur_scissor_score = 0
+        self.cur_red_score = 0
 
         for c1, c2 in self.swaps:
             self.swap(c1, c2)
 
 
-# k = Keyboard()  # make_keyboard_from_file("layouts/qwerty.txt", False)
-#
-# s = time()
-#
-# for i in range(30):
-#     k.mutate()
-#     print(k, "\n")
-#     # k.reject()
-#
-# print(round((time() - s), 5), "s")
-# print(k)
-#
+def make_keyboard_from_file(file, staggered=False):
+    try:
+        with open(file, "r") as f:
+            return Keyboard([l.split() for l in f], staggered=staggered)
+    except FileNotFoundError as e:
+        print("Cannot load file, skill issue, error:", e)

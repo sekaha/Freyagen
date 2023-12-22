@@ -15,7 +15,6 @@ def get_stopping_time(key_count):
     swap_n = key_count * (key_count - 1) / 2
     euler_mascheroni = 0.577215665
 
-    # expected value
     ev = swap_n * log(swap_n) + euler_mascheroni * swap_n + 0.5
     return int(ev + 1)
 

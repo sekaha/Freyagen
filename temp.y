@@ -67,3 +67,11 @@ def main(stdscr):
 
 if __name__ == "__main__":
     curses.wrapper(main)
+
+r . c d g  j h b o u
+l i s m t  k y n a e
+x , w q z  f v p ; /
+
+h r c d g  j b u o .
+y l s m t  k n e a i
+v x w q z  f p / ; ,
